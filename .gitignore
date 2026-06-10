@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+.venv/
+venv/
+env/
+
+.idea/
+.vscode/
+
+*.log
+
+# Generated demo audio. Keep the emotion folders via .gitkeep files.
+music/*/*.wav
+!music/*/.gitkeep
+
+# Local media collections can get large; add selected tracks manually if desired.
+music/*/*.mp3
+music/*/*.ogg
+music/*/*.flac
