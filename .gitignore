@@ -9,9 +9,6 @@ env/
 .idea/
 .vscode/
 
-node_modules/
-dist/
-
 *.log
 
 # Generated demo audio. Keep the emotion folders via .gitkeep files.

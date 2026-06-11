@@ -13,7 +13,6 @@ emotion_music_player/
 ├── emotion_detector.py       # MediaPipe Face Mesh + emotion rules
 ├── generate_demo_music.py    # Generates test .wav files
 ├── requirements.txt
-├── frontend/                 # React UI demo / control surface
 └── music/
     ├── happy/
     ├── sad/
@@ -50,16 +49,6 @@ Run the player:
 python emotion_music_player.py
 ```
 
-Run the React frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The React app is a browser-based interface/demo surface for the project. The real webcam emotion detection and music playback still run through the Python app.
-
 ## Controls
 
 | Key | Action |
@@ -70,21 +59,13 @@ The React app is a browser-based interface/demo surface for the project. The rea
 
 ## Interface
 
-The Python player opens a polished desktop-style OpenCV interface with:
+The player opens a polished desktop-style OpenCV interface with:
 
 - A large live webcam preview with Face Mesh overlay
 - A right-side emotion and music status panel
 - Confidence and music-switch readiness meters
 - A color-coded timeline of recent emotion predictions
 - Compact keyboard controls for quit, next track, and mute
-
-The React frontend adds a GitHub-friendly visual dashboard with:
-
-- Browser webcam preview
-- Emotion selection and playlist mapping UI
-- Confidence and stability meters
-- Playback controls
-- Responsive layout for desktop and mobile
 
 ## Configuration
 
