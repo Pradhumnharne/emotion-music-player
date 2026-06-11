@@ -57,6 +57,16 @@ python emotion_music_player.py
 | `N` | Skip to next track for current emotion |
 | `M` | Toggle mute |
 
+## Interface
+
+The player opens a polished desktop-style OpenCV interface with:
+
+- A large live webcam preview with Face Mesh overlay
+- A right-side emotion and music status panel
+- Confidence and music-switch readiness meters
+- A color-coded timeline of recent emotion predictions
+- Compact keyboard controls for quit, next track, and mute
+
 ## Configuration
 
 Edit these constants in `emotion_music_player.py`:

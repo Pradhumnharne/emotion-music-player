@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -29,14 +28,19 @@ EMOTION_LABELS = {
 }
 
 EMOTION_COLORS = {
-    "happy": (0, 210, 255),
-    "sad": (255, 150, 80),
-    "angry": (70, 70, 255),
-    "surprised": (0, 190, 160),
-    "fearful": (210, 120, 255),
-    "disgusted": (80, 200, 80),
-    "neutral": (210, 210, 210),
+    "happy": (40, 206, 255),
+    "sad": (235, 145, 72),
+    "angry": (78, 88, 242),
+    "surprised": (68, 205, 172),
+    "fearful": (205, 128, 240),
+    "disgusted": (104, 198, 94),
+    "neutral": (206, 211, 218),
 }
+
+APP_SIZE = (1280, 720)
+VIDEO_RECT = (28, 86, 884, 498)
+PANEL_RECT = (936, 86, 316, 498)
+WINDOW_TITLE = "Emotion Music Player"
 
 
 class MusicLibrary:
@@ -105,45 +109,177 @@ class AudioPlayer:
         pygame.mixer.quit()
 
 
-def draw_hud(frame: np.ndarray, result: EmotionResult, player: AudioPlayer) -> None:
-    height, width = frame.shape[:2]
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (width, 92), (18, 18, 22), -1)
-    cv2.rectangle(overlay, (0, height - 58), (width, height), (18, 18, 22), -1)
-    cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
+def render_app_frame(camera_frame: np.ndarray, result: EmotionResult, player: AudioPlayer, library: MusicLibrary) -> np.ndarray:
+    app_width, app_height = APP_SIZE
+    canvas = np.full((app_height, app_width, 3), (21, 24, 31), dtype=np.uint8)
+    draw_header(canvas, result)
+    draw_video_panel(canvas, camera_frame)
+    draw_side_panel(canvas, result, player, library)
+    draw_history(canvas, result.history)
+    draw_footer(canvas, player)
+    return canvas
+
+
+def draw_header(canvas: np.ndarray, result: EmotionResult) -> None:
+    emotion = result.emotion
+    color = EMOTION_COLORS[emotion]
+    label = EMOTION_LABELS[emotion]
+
+    cv2.putText(canvas, "Emotion Music Player", (28, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.82, (242, 244, 248), 2, cv2.LINE_AA)
+    cv2.putText(canvas, "Face Mesh mood detection", (30, 66), cv2.FONT_HERSHEY_SIMPLEX, 0.43, (150, 158, 170), 1, cv2.LINE_AA)
+    draw_pill(canvas, (1030, 26), (222, 36), color, f"Detected: {label}", text_color=(18, 20, 24))
+
+
+def draw_video_panel(canvas: np.ndarray, camera_frame: np.ndarray) -> None:
+    x, y, width, height = VIDEO_RECT
+    draw_panel(canvas, (x - 8, y - 8, width + 16, height + 16), fill=(31, 35, 45), border=(59, 66, 80))
+
+    video = cv2.resize(camera_frame, (width, height), interpolation=cv2.INTER_AREA)
+    canvas[y : y + height, x : x + width] = video
+    cv2.rectangle(canvas, (x, y), (x + width, y + height), (74, 82, 98), 1)
+
+
+def draw_side_panel(canvas: np.ndarray, result: EmotionResult, player: AudioPlayer, library: MusicLibrary) -> None:
+    x, y, width, height = PANEL_RECT
+    draw_panel(canvas, PANEL_RECT, fill=(29, 33, 43), border=(61, 69, 84))
 
     emotion = result.emotion
     color = EMOTION_COLORS[emotion]
     label = EMOTION_LABELS[emotion]
     confidence = int(result.confidence * 100)
     stability = min(result.stable_frames / EMOTION_HOLD_FRAMES, 1.0)
+    track_count = len(library.tracks.get(emotion, []))
 
-    cv2.putText(frame, label, (24, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.95, color, 2, cv2.LINE_AA)
-    cv2.putText(frame, f"{confidence}%", (24, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (235, 235, 235), 1, cv2.LINE_AA)
+    cv2.putText(canvas, "Current emotion", (x + 24, y + 38), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (155, 164, 178), 1, cv2.LINE_AA)
+    cv2.putText(canvas, label, (x + 24, y + 86), cv2.FONT_HERSHEY_SIMPLEX, 1.28, color, 2, cv2.LINE_AA)
 
-    bar_x, bar_y, bar_w, bar_h = width - 260, 26, 210, 18
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (85, 85, 90), 1)
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + int(bar_w * result.confidence), bar_y + bar_h), color, -1)
-    cv2.putText(frame, "Stability", (bar_x, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (225, 225, 225), 1, cv2.LINE_AA)
-    cv2.rectangle(frame, (bar_x + 86, 60), (bar_x + 86 + int(124 * stability), 74), color, -1)
-    cv2.rectangle(frame, (bar_x + 86, 60), (bar_x + 210, 74), (85, 85, 90), 1)
+    draw_metric(canvas, (x + 24, y + 124), "Confidence", confidence / 100.0, f"{confidence}%", color)
+    draw_metric(canvas, (x + 24, y + 190), "Music switch readiness", stability, f"{int(stability * 100)}%", color)
 
-    draw_history(frame, result.history, height)
+    status = "Ready to switch" if stability >= 1.0 else f"Hold {max(0, EMOTION_HOLD_FRAMES - result.stable_frames)} frames"
+    draw_pill(canvas, (x + 24, y + 262), (180, 32), color if stability >= 1.0 else (75, 82, 96), status)
 
     track_name = player.current_track.name if player.current_track else f"No {emotion} track found"
-    muted = "Muted" if player.muted else "Sound"
-    footer = f"Now Playing: {track_name}    Q: Quit   N: Next   M: {muted}"
-    cv2.putText(frame, footer, (22, height - 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 235), 1, cv2.LINE_AA)
+    cv2.putText(canvas, "Now playing", (x + 24, y + 336), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (155, 164, 178), 1, cv2.LINE_AA)
+    draw_wrapped_text(canvas, track_name, (x + 24, y + 370), width - 48, 0.55, (238, 241, 246), max_lines=2)
+    cv2.putText(canvas, f"{track_count} track(s) for {label.lower()}", (x + 24, y + 438), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (155, 164, 178), 1, cv2.LINE_AA)
 
 
-def draw_history(frame: np.ndarray, history: tuple[str, ...], height: int) -> None:
+def draw_history(canvas: np.ndarray, history: tuple[str, ...]) -> None:
+    x, y, width, height = 28, 610, 884, 58
+    draw_panel(canvas, (x - 8, y - 8, width + 16, height + 16), fill=(29, 33, 43), border=(61, 69, 84))
+    cv2.putText(canvas, "Emotion timeline", (x, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (155, 164, 178), 1, cv2.LINE_AA)
+
     if not history:
         return
-    x, y = 22, height - 88
-    segment_w, segment_h = 18, 14
+    segment_w, segment_h = 44, 14
     for index, emotion in enumerate(history[-SMOOTHING_WINDOW:]):
-        left = x + index * (segment_w + 3)
-        cv2.rectangle(frame, (left, y), (left + segment_w, y + segment_h), EMOTION_COLORS[emotion], -1)
+        left = x + index * (segment_w + 10)
+        cv2.rectangle(canvas, (left, y + 34), (left + segment_w, y + 34 + segment_h), EMOTION_COLORS[emotion], -1)
+
+
+def draw_footer(canvas: np.ndarray, player: AudioPlayer) -> None:
+    muted_label = "Muted" if player.muted else "Sound on"
+    controls = (("Q", "Quit"), ("N", "Next track"), ("M", muted_label))
+    x = 936
+    y = 620
+    cv2.putText(canvas, "Controls", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (155, 164, 178), 1, cv2.LINE_AA)
+    for index, (key, label) in enumerate(controls):
+        top = y + 22 + index * 38
+        draw_key(canvas, (x, top), key, label)
+
+
+def draw_panel(canvas: np.ndarray, rect: tuple[int, int, int, int], fill: tuple[int, int, int], border: tuple[int, int, int]) -> None:
+    x, y, width, height = rect
+    cv2.rectangle(canvas, (x, y), (x + width, y + height), fill, -1)
+    cv2.rectangle(canvas, (x, y), (x + width, y + height), border, 1)
+
+
+def draw_metric(
+    canvas: np.ndarray,
+    origin: tuple[int, int],
+    label: str,
+    value: float,
+    value_label: str,
+    color: tuple[int, int, int],
+) -> None:
+    x, y = origin
+    width, height = 244, 14
+    cv2.putText(canvas, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.47, (155, 164, 178), 1, cv2.LINE_AA)
+    cv2.putText(canvas, value_label, (x + 198, y), cv2.FONT_HERSHEY_SIMPLEX, 0.47, (232, 235, 240), 1, cv2.LINE_AA)
+    cv2.rectangle(canvas, (x, y + 18), (x + width, y + 18 + height), (58, 64, 78), -1)
+    cv2.rectangle(canvas, (x, y + 18), (x + int(width * np.clip(value, 0.0, 1.0)), y + 18 + height), color, -1)
+    cv2.rectangle(canvas, (x, y + 18), (x + width, y + 18 + height), (83, 91, 108), 1)
+
+
+def draw_pill(
+    canvas: np.ndarray,
+    origin: tuple[int, int],
+    size: tuple[int, int],
+    fill: tuple[int, int, int],
+    text: str,
+    text_color: tuple[int, int, int] = (242, 244, 248),
+) -> None:
+    x, y = origin
+    width, height = size
+    cv2.rectangle(canvas, (x, y), (x + width, y + height), fill, -1)
+    text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0]
+    text_x = x + max(10, (width - text_size[0]) // 2)
+    text_y = y + (height + text_size[1]) // 2 - 2
+    cv2.putText(canvas, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, text_color, 1, cv2.LINE_AA)
+
+
+def draw_key(canvas: np.ndarray, origin: tuple[int, int], key: str, label: str) -> None:
+    x, y = origin
+    cv2.rectangle(canvas, (x, y), (x + 36, y + 26), (229, 233, 240), -1)
+    cv2.putText(canvas, key, (x + 11, y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (24, 27, 34), 2, cv2.LINE_AA)
+    cv2.putText(canvas, label, (x + 50, y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (232, 235, 240), 1, cv2.LINE_AA)
+
+
+def draw_wrapped_text(
+    canvas: np.ndarray,
+    text: str,
+    origin: tuple[int, int],
+    max_width: int,
+    scale: float,
+    color: tuple[int, int, int],
+    max_lines: int,
+) -> None:
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if cv2.getTextSize(candidate, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0] <= max_width:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1][: max(3, len(lines[-1]) - 3)] + "..."
+
+    x, y = origin
+    for index, line in enumerate(lines):
+        line = fit_text(line, max_width, scale)
+        cv2.putText(canvas, line, (x, y + index * 24), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
+
+
+def fit_text(text: str, max_width: int, scale: float) -> str:
+    if cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0] <= max_width:
+        return text
+
+    trimmed = text
+    while len(trimmed) > 3:
+        candidate = trimmed[:-1] + "..."
+        if cv2.getTextSize(candidate, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0] <= max_width:
+            return candidate
+        trimmed = trimmed[:-1]
+    return "..."
 
 
 def main() -> None:
@@ -174,8 +310,8 @@ def main() -> None:
                 player.switch_to(result.emotion)
                 last_applied_emotion = result.emotion
 
-            draw_hud(frame, result, player)
-            cv2.imshow("Emotion Music Player", frame)
+            app_frame = render_app_frame(frame, result, player, library)
+            cv2.imshow(WINDOW_TITLE, app_frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
